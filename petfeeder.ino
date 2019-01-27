@@ -1,10 +1,11 @@
 #include <LiquidCrystal.h>
-#include <Ethernet.h>
+//#include <Ethernet.h>
 
-//Ethernet
+/*//Ethernet
 String readString;// stores the HTTP request
 byte mac[] = { 0x64, 0x18, 0x22, 0x40, 0x30, 0x28 };
 EthernetServer server(80);// normal http port = 80
+*/
 
 volatile int keskeytyslippu;
 volatile int ethernet_laskuri;
@@ -66,20 +67,21 @@ unsigned int vanhakytkin_oikea;
 unsigned int kytkin_tila_oikea;
 
 void setup() {
-  
+
+  servo=-1;//servo off
   /*I/O-port registers INPUT/OUTPUT setup*/
   DDRB = 0x02;
   DDRC = 0x01;
 
   //Ethernet
   Serial.begin(9600);
-  Serial.print("Waiting IP num. ");
-  ask_IP();    // Pick IP number
-  server.begin();  // start server
+  //Serial.print("Waiting IP num. ");
+  //ask_IP();    // Pick IP number
+  //server.begin();  // start server
 
   /*TIMER1 in use,16 bit register, using compare B, interrupt setup*/
   keskeytyshetki=20000;
-  keskhetki_servo=40000;
+  keskhetki_servo=20000;
   TCCR1A=0x00;//clear on compare match, when timer reaches OCR0B value=10ms
   TCCR1B=0x02;// prescaler of 8->16MHz/8=2MHz=0,5us
   OCR1B=keskeytyshetki;//20000*0,5us=10ms
@@ -97,11 +99,19 @@ void loop() {
   //set where to start on the lcd
   lcd.setCursor(0, 0); //(row,column)
 
+  kytkintoiminnot();
+
   kayttoliittyma();
+  
+  automaattinen_ruoka();
 
-  /****************************************KYTKIMIEN ASETUKSET*****************************************************************/
-  if (keskeytyslippu == 1) {
+  /****RUUAN MITTAUS****/
+  ruoka_korkeus = ping();
+}
 
+/****************************************KYTKIMIEN ASETUKSET*****************************************************************/
+void kytkimet(){
+  
     /******************kytkimien ja muut tarpeelliset alustukset******************/
     keskeytyslippu = 0x00; //set interrupt flag 0
 
@@ -133,42 +143,59 @@ void loop() {
     }
 
     /*******If DOWN button is pressed***/
-    if  (kytkin_down == 1) { // if buttun state is 1 (pressed)
+    else if  (kytkin_down == 1) { // if buttun state is 1 (pressed)
       if (vanhakytkin_down == 0) {
         kytkin_tila_down = 1;
       }
     }
 
     /*******jos UP  nappi painettu***/
-    if  (kytkin_up == 1) { // if buttun state is 1 (pressed)
+    else if  (kytkin_up == 1) { // if buttun state is 1 (pressed)
       if (vanhakytkin_up == 0) {
         kytkin_tila_up = 1;
       }
     }
 
     /*******jos VASEN  nappi painettu***/
-    if  (kytkin_vasen == 1) { // if buttun state is 1 (pressed)
+    else if  (kytkin_vasen == 1) { // if buttun state is 1 (pressed)
       if (vanhakytkin_vasen == 0) {
         kytkin_tila_vasen = 1;
       }
     }
 
     /*******jos OIKEA  nappi painettu***/
-    if  (kytkin_oikea == 1) { // if buttun state is 1 (pressed)
+    else if  (kytkin_oikea == 1) { // if buttun state is 1 (pressed)
       if (vanhakytkin_oikea == 0) {
         kytkin_tila_oikea = 1;
       }
+    } 
+}
+
+void aika(){
+  
+  if(sekuntilaskuri==100){
+      
+    sekuntilaskuri=0;
+      
+    if(sekunti<59){
+      sekunti++;  
+    }
+    else{
+      sekunti=0;
+      if(minuutit<59){
+        minuutit++;
+      }
+      else{
+        minuutit=0;
+        if(tunnit < 23){
+          tunnit++;
+         }
+         else{
+          tunnit=0;
+        }
+      }
     }
   }
-
-  kytkintoiminnot();
-
-  automaattinen_ruoka();
-
-  /****RUUAN MITTAUS****/
-  ruoka_korkeus = ping();
-  delay(100);
-
 }
 
 /*********************************KELLO KESKEYTYSPALVELU B*******************************/
@@ -178,27 +205,17 @@ ISR(TIMER1_COMPB_vect){
     keskeytyshetki+=20000;
     OCR1B=keskeytyshetki;
 
-    keskeytyslippu=1;
-
     sekuntilaskuri++;
     ethernet_laskuri++;
 
-    if(ethernet_laskuri==5){
+    /*if(ethernet_laskuri==5){
       ethernet_laskuri=0;
       listenForEthernetClients();//listen to client every 50 ms
-    }
-
-    if(sekuntilaskuri==100){
-      sekuntilaskuri=0;
-      if(sekunti==59){
-        sekunti=0;
-        minuutit++;
-      }
-
-      else{
-      sekunti++;
-      }
-    }
+    }*/
+    
+    aika();//ajan laskuri
+    
+    kytkimet();//käydään kytkimet läpi
   }
 
 /****************************SERVO KESKEYTYSPALVELU A****************************************/
@@ -219,7 +236,7 @@ ISR(TIMER1_COMPA_vect){
     }  
   }
   
-  else{
+  if(servo==0){
     if(servo_time==1){
       servo_time=0;
       PORTC=0x01;
@@ -244,6 +261,7 @@ void luukku_auki() {
   kayttoliittyma();
   servo=0;
   delay(500);
+  servo=-1;
   kayttoliittyma();
   
 }
@@ -307,7 +325,7 @@ void kayttoliittyma() {
       ajan_naytto=0;
     }
 
-    if (y == 1) {
+    else if (y == 1) {
       lcd.clear();
       lcd.print("Kellonaika");
       kellolippu = 1;
@@ -322,17 +340,17 @@ void kayttoliittyma() {
         lcd.print("Aamupala");
       }
 
-      if (y == 1) {
+      else if (y == 1) {
         lcd.clear();
         lcd.print("lounas");
       }
 
-      if (y == 2) {
+      else if (y == 2) {
         lcd.clear();
         lcd.print("iltapala");
       }
 
-      if (y == 3) {
+      else if (y == 3) {
         lcd.clear();
         lcd.print("kellonaika");
       }
@@ -358,7 +376,7 @@ void kayttoliittyma() {
       lcd.print(minuutit_aamupala);
     }
 
-    if (y == 1) {
+    else if (y == 1) {
       lcd.clear();
       lcd.print("aseta lounas:");
       lcd.setCursor(0, 1);
@@ -367,7 +385,7 @@ void kayttoliittyma() {
       lcd.print(minuutit_lounas);
     }
 
-    if (y == 2) {
+    else if (y == 2) {
       lcd.clear();
       lcd.print("aseta iltapala:");
       lcd.setCursor(0, 1);
@@ -376,7 +394,7 @@ void kayttoliittyma() {
       lcd.print(minuutit_iltapala);
     }
 
-    if (y == 3) {
+    else if (y == 3) {
       aika_asetettu = 1;
       lcd.clear();
       lcd.print("aseta kellonaika:");
@@ -388,17 +406,18 @@ void kayttoliittyma() {
   }
 }
 
+/*************************************************KYTKIMIEN TOIMINTA*************************************************************/
 void kytkintoiminnot() {
-  /*************************************************KYTKIMIEN TOIMINTA*************************************************************/
+
   //If pet's own feeding button was pressed
   if (kytkin_painettu == 1) {
-
+    
     kytkin_painettu = 0x00;
     luukku_auki();
   }
 
   //if down button was pressed
-  if (kytkin_tila_down == 1 && ajan_naytto==0) {
+  else if (kytkin_tila_down == 1 && ajan_naytto==0) {
 
     kytkin_tila_down = 0;
     if (ajanasetuslippu == 0) {
@@ -415,7 +434,7 @@ void kytkintoiminnot() {
       }
     }
 
-    else if (y == 0) {
+   else if (y == 0) {
 
       if (x_aika == 0) {
         if (tunnit_aamupala > 0) {
@@ -426,7 +445,7 @@ void kytkintoiminnot() {
         }
       }
 
-      if (x_aika == 1) {
+      else if (x_aika == 1) {
         if (minuutit_aamupala > 0) {
           minuutit_aamupala--;
         }
@@ -448,7 +467,7 @@ void kytkintoiminnot() {
         }
       }
 
-      if (x_aika == 1) {
+      else if (x_aika == 1) {
         if (minuutit_lounas > 0) {
           minuutit_lounas--;
         }
@@ -470,7 +489,7 @@ void kytkintoiminnot() {
         }
       }
 
-      if (x_aika == 1) {
+      else if (x_aika == 1) {
         if (minuutit_iltapala > 0) {
           minuutit_aamupala--;
         }
@@ -492,7 +511,7 @@ void kytkintoiminnot() {
         }
       }
 
-      if (x_aika == 1) {
+      else if (x_aika == 1) {
         if (minuutit > 0) {
           minuutit--;
         }
@@ -505,7 +524,7 @@ void kytkintoiminnot() {
   }
 
   //if up button was pressed
-  if (kytkin_tila_up == 1 && ajan_naytto==0) {
+  else if (kytkin_tila_up == 1 && ajan_naytto==0) {
 
     kytkin_tila_up = 0;
 
@@ -534,7 +553,7 @@ void kytkintoiminnot() {
         }
       }
 
-      if (x_aika == 1) {
+      else if (x_aika == 1) {
         if (minuutit_aamupala < 59) {
           minuutit_aamupala++;
         }
@@ -613,7 +632,7 @@ void kytkintoiminnot() {
   }
 
   //if button to the right was pressed
-  if (kytkin_tila_oikea == 1 && ajan_naytto==0) {
+  else if (kytkin_tila_oikea == 1 && ajan_naytto==0) {
 
     kytkin_tila_oikea = 0;
 
@@ -638,7 +657,7 @@ void kytkintoiminnot() {
   }
 
   //if button to the left was pressed
-  if (kytkin_tila_vasen == 1) {
+  else if (kytkin_tila_vasen == 1) {
 
     kytkin_tila_vasen = 0;
 
@@ -695,16 +714,16 @@ void automaattinen_ruoka() {
       luukku_auki();
     }
 
-    if (tunnit_lounas == tunnit && minuutit_lounas == minuutit && sekunti_lounas == sekunti) {
+    else if (tunnit_lounas == tunnit && minuutit_lounas == minuutit && sekunti_lounas == sekunti) {
       luukku_auki();
     }
 
-    if (tunnit_iltapala == tunnit && minuutit_iltapala == minuutit && sekunti_iltapala == sekunti) {
+    else if (tunnit_iltapala == tunnit && minuutit_iltapala == minuutit && sekunti_iltapala == sekunti) {
       luukku_auki();
     }
   }
 }
-
+/*
 void ask_IP(void) {
 
   byte rev;
@@ -808,4 +827,4 @@ void listenForEthernetClients() {
       }
     }
   }
-}
+}*/
